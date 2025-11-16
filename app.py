@@ -1,4 +1,5 @@
 import base64
+import html
 import json
 import os
 import urllib.parse
@@ -249,18 +250,22 @@ def build_carousel_items(videos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         doctor = video.get("doctor")
         channel = video.get("channel")
         published = video.get("published")
-        description_parts = []
-        if summary:
-            description_parts.append(summary)
-        meta = " • ".join(filter(None, [doctor, channel, published]))
-        if meta:
-            description_parts.append(meta)
-        text = "\n".join(description_parts) if description_parts else "Tap to watch this doctor's perspective."
+        chips = " • ".join(filter(None, [doctor, channel, published]))
+        description = "<br/>".join(
+            html.escape(part) for part in filter(None, [summary, chips])
+        )
+        if not description:
+            description = "Tap to watch this doctor's perspective."
+        caption_html = (
+            "<div style='background: rgba(0,0,0,0.75); padding: 12px; border-radius: 8px;'>"
+            f"<strong>{html.escape(title)}</strong><br/>{description}"
+            "</div>"
+        )
         items.append(
             {
                 "img": _resolve_video_thumbnail(link, video.get("thumbnail")),
-                "title": title,
-                "text": text,
+                "title": "",
+                "text": caption_html,
                 "link": link,
             }
         )
@@ -316,7 +321,7 @@ def fetch_condition_info(label: str) -> Tuple[Optional[str], Optional[str]]:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Skin Condition Triage", page_icon="🩺")
+    st.set_page_config(page_title="Skin Condition Triage", page_icon="🩺", layout="wide")
     st.title("Skin Condition Triage")
     st.write(
         "Upload a close-up image of the affected skin area. "
@@ -334,7 +339,7 @@ def main() -> None:
     image_bytes: Optional[bytes] = None
     if uploaded:
         image_bytes = uploaded.getvalue()
-        st.image(image_bytes, caption="Uploaded image", use_column_width=True)
+        st.image(image_bytes, caption="Uploaded image", use_container_width=True)
 
     if image_bytes and st.button("Analyze"):
         with st.spinner("Contacting the vision model..."):
@@ -348,39 +353,45 @@ def main() -> None:
         confidence = result.get("confidence")
         explanation = result.get("explanation", "")
 
-        st.subheader("Model Assessment")
-        st.write(f"**Condition:** {label}")
-        if confidence is not None:
-            st.write(f"**Confidence:** {confidence:.2f}")
-        if explanation:
-            st.write(f"**Explanation:** {explanation}")
+        info_col, video_col = st.columns([1.15, 1])
 
-        st.subheader("Condition Overview")
-        info_text, info_error = fetch_condition_info(label)
-        if info_error:
-            st.info(f"Educational snippet unavailable: {info_error}")
-        elif info_text:
-            st.markdown(info_text)
+        with info_col:
+            st.subheader("Model Assessment")
+            st.write(f"**Condition:** {label}")
+            if confidence is not None:
+                st.write(f"**Confidence:** {confidence:.2f}")
+            if explanation:
+                st.write(f"**Explanation:** {explanation}")
 
-        st.subheader("Doctor Video Gallery")
-        videos, video_error = search_condition_videos(label)
-        if video_error:
-            st.info(f"Video recommendations unavailable: {video_error}")
-        elif not videos:
-            st.write("No dermatologist-created videos found right now.")
-        else:
-            items = build_carousel_items(videos)
-            if not items:
+            st.subheader("Condition Overview")
+            info_text, info_error = fetch_condition_info(label)
+            if info_error:
+                st.info(f"Educational snippet unavailable: {info_error}")
+            elif info_text:
+                st.markdown(info_text)
+
+        with video_col:
+            st.subheader("Doctor Video Gallery")
+            videos, video_error = search_condition_videos(label)
+            if video_error:
+                st.info(f"Video recommendations unavailable: {video_error}")
+            elif not videos:
                 st.write("No dermatologist-created videos found right now.")
             else:
-                carousel(
-                    items=items,
-                    controls=True,
-                    indicators=True,
-                    interval=6000,
-                    container_height=420,
-                    key=f"video-carousel-{label.lower().replace(' ', '-')}",
-                )
+                items = build_carousel_items(videos)
+                if not items:
+                    st.write("No dermatologist-created videos found right now.")
+                else:
+                    carousel(
+                        items=items,
+                        controls=True,
+                        indicators=True,
+                        interval=6000,
+                        pause="hover",
+                        container_height=460,
+                        width=1.0,
+                        key=f"video-carousel-{label.lower().replace(' ', '-')}",
+                    )
 
         if label.lower() == "normal skin" or label.lower() == "normal":
             st.success("The model did not detect a skin disease. No specialist search triggered.")
