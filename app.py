@@ -1,5 +1,4 @@
 import base64
-import html
 import json
 import os
 import urllib.parse
@@ -246,30 +245,34 @@ def build_carousel_items(videos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for video in videos[:6]:
         link = video.get("url") or video.get("link") or "#"
         title = video.get("title") or "Dermatology video"
-        summary = video.get("summary")
-        doctor = video.get("doctor")
-        channel = video.get("channel")
-        published = video.get("published")
-        chips = " • ".join(filter(None, [doctor, channel, published]))
-        description = "<br/>".join(
-            html.escape(part) for part in filter(None, [summary, chips])
-        )
-        if not description:
-            description = "Tap to watch this doctor's perspective."
-        caption_html = (
-            "<div style='background: rgba(0,0,0,0.75); padding: 12px; border-radius: 8px;'>"
-            f"<strong>{html.escape(title)}</strong><br/>{description}"
-            "</div>"
-        )
         items.append(
             {
                 "img": _resolve_video_thumbnail(link, video.get("thumbnail")),
                 "title": "",
-                "text": caption_html,
+                "text": "",
                 "link": link,
             }
         )
     return items
+
+
+def render_video_details(videos: List[Dict[str, Any]]) -> None:
+    st.caption("Tap a slide to open YouTube. Details:")
+    for video in videos[:6]:
+        title = video.get("title") or "Dermatology video"
+        link = video.get("url") or video.get("link") or "#"
+        summary = video.get("summary")
+        doctor = video.get("doctor")
+        channel = video.get("channel")
+        published = video.get("published")
+
+        st.markdown(f"**[{title}]({link})**")
+        meta_parts = list(filter(None, [doctor, channel, published]))
+        if meta_parts:
+            st.caption(" • ".join(meta_parts))
+        if summary:
+            st.write(summary)
+        st.divider()
 
 
 def fetch_condition_info(label: str) -> Tuple[Optional[str], Optional[str]]:
@@ -392,6 +395,7 @@ def main() -> None:
                         width=1.0,
                         key=f"video-carousel-{label.lower().replace(' ', '-')}",
                     )
+                    render_video_details(videos)
 
         if label.lower() == "normal skin" or label.lower() == "normal":
             st.success("The model did not detect a skin disease. No specialist search triggered.")
