@@ -1,10 +1,12 @@
 import base64
 import json
 import os
-from typing import Any, Dict, Optional, Tuple
+import urllib.parse
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 from openai import OpenAI
+from streamlit_carousel import carousel
 
 try:
     from linkup import LinkupClient
@@ -39,6 +41,8 @@ ACNE_EDUCATION_TEXT = (
     "sometimes with bacteria, leading to blackheads, whiteheads, and pimples.\n\n"
     "General steps that may help (not medical advice):"
 )
+
+DEFAULT_VIDEO_THUMBNAIL = "https://placehold.co/600x360?text=Dermatology+Video"
 
 
 @st.cache_resource(show_spinner=False)
@@ -124,6 +128,143 @@ def search_specialists(label: str, location: str) -> Tuple[Optional[Any], Option
         return response, None
     except Exception as exc:  # pragma: no cover - depends on external service.
         return None, str(exc)
+
+
+def _extract_json_snippet(value: str) -> str:
+    start = value.find("{")
+    end = value.rfind("}")
+    if start != -1 and end != -1:
+        return value[start : end + 1]
+    return value
+
+
+def _extract_text_from_linkup(response: Any) -> str:
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        for key in ("output_text", "answer", "content", "text", "output"):
+            val = response.get(key)
+            if isinstance(val, str):
+                return val
+        return json.dumps(response)
+    for attr in ("output_text", "answer", "content", "text", "output"):
+        if hasattr(response, attr):
+            val = getattr(response, attr)
+            if isinstance(val, str):
+                return val
+    if hasattr(response, "dict"):
+        try:
+            return json.dumps(response.dict())
+        except Exception:
+            pass
+    return str(response)
+
+
+def search_condition_videos(label: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    client = get_linkup_client()
+    if client is None:
+        return [], "Linkup SDK not installed or LINKUP_API_KEY missing."
+
+    query = (
+        "List up to six YouTube videos created by board-certified dermatologists "
+        f"that explain or treat {label}. "
+        "Respond ONLY in JSON with a top-level key 'videos', where each entry contains: "
+        "title, url, doctorName, channelName, publishedDate, thumbnailUrl, and summary."
+    )
+
+    try:
+        response = client.search(query=query, depth="deep", output_type="sourcedAnswer")
+    except Exception as exc:  # pragma: no cover
+        return [], str(exc)
+
+    raw_text = _extract_text_from_linkup(response)
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        snippet = _extract_json_snippet(raw_text)
+        try:
+            data = json.loads(snippet)
+        except json.JSONDecodeError:
+            return [], "Could not parse Linkup video response."
+
+    videos_raw: Any = []
+    if isinstance(data, dict):
+        videos_raw = data.get("videos") or data.get("results") or data.get("items", [])
+    elif isinstance(data, list):
+        videos_raw = data
+
+    videos: List[Dict[str, Any]] = []
+    if isinstance(videos_raw, list):
+        for entry in videos_raw:
+            if not isinstance(entry, dict):
+                continue
+            videos.append(
+                {
+                    "title": entry.get("title") or entry.get("name"),
+                    "url": entry.get("url") or entry.get("link"),
+                    "doctor": entry.get("doctorName") or entry.get("doctor"),
+                    "channel": entry.get("channelName") or entry.get("channel"),
+                    "summary": entry.get("summary") or entry.get("description"),
+                    "published": entry.get("publishedDate") or entry.get("published"),
+                    "thumbnail": entry.get("thumbnailUrl") or entry.get("thumbnail"),
+                }
+            )
+
+    return videos, None
+
+
+def _extract_youtube_id(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.strip("/")
+
+    if "youtu.be" in host:
+        return path or None
+    if "youtube.com" in host:
+        if path.startswith("shorts/"):
+            return path.split("/", 1)[1] if "/" in path else path.replace("shorts/", "", 1)
+        query = urllib.parse.parse_qs(parsed.query)
+        if "v" in query and query["v"]:
+            return query["v"][0]
+    return None
+
+
+def _resolve_video_thumbnail(url: Optional[str], provided: Optional[str]) -> str:
+    if provided:
+        return provided
+    video_id = _extract_youtube_id(url)
+    if video_id:
+        return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+    return DEFAULT_VIDEO_THUMBNAIL
+
+
+def build_carousel_items(videos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for video in videos[:6]:
+        link = video.get("url") or video.get("link") or "#"
+        title = video.get("title") or "Dermatology video"
+        summary = video.get("summary")
+        doctor = video.get("doctor")
+        channel = video.get("channel")
+        published = video.get("published")
+        description_parts = []
+        if summary:
+            description_parts.append(summary)
+        meta = " • ".join(filter(None, [doctor, channel, published]))
+        if meta:
+            description_parts.append(meta)
+        text = "\n".join(description_parts) if description_parts else "Tap to watch this doctor's perspective."
+        items.append(
+            {
+                "img": _resolve_video_thumbnail(link, video.get("thumbnail")),
+                "title": title,
+                "text": text,
+                "link": link,
+            }
+        )
+    return items
 
 
 def fetch_condition_info(label: str) -> Tuple[Optional[str], Optional[str]]:
@@ -220,6 +361,26 @@ def main() -> None:
             st.info(f"Educational snippet unavailable: {info_error}")
         elif info_text:
             st.markdown(info_text)
+
+        st.subheader("Doctor Video Gallery")
+        videos, video_error = search_condition_videos(label)
+        if video_error:
+            st.info(f"Video recommendations unavailable: {video_error}")
+        elif not videos:
+            st.write("No dermatologist-created videos found right now.")
+        else:
+            items = build_carousel_items(videos)
+            if not items:
+                st.write("No dermatologist-created videos found right now.")
+            else:
+                carousel(
+                    items=items,
+                    controls=True,
+                    indicators=True,
+                    interval=6000,
+                    container_height=420,
+                    key=f"video-carousel-{label.lower().replace(' ', '-')}",
+                )
 
         if label.lower() == "normal skin" or label.lower() == "normal":
             st.success("The model did not detect a skin disease. No specialist search triggered.")

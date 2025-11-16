@@ -1,6 +1,6 @@
 # Skin Condition Triage
 
-Streamlit application that sends uploaded skin images to a local vision model (OpenAI-compatible endpoint on `http://localhost:8080/v1`) and, when a disease is detected, queries Linkup for dermatologists who treat that condition.
+Streamlit application that sends uploaded skin images to a local vision model (OpenAI-compatible endpoint on `http://localhost:8080/v1`) and, when a disease is detected, uses Linkup to find dermatologists and curated doctor-made YouTube videos for that condition. The videos are displayed using the `streamlit-carousel` component for an interactive viewing experience.
 
 ## Setup
 
@@ -13,7 +13,7 @@ Streamlit application that sends uploaded skin images to a local vision model (O
    - `OPENAI_BASE_URL`
    - `OPENAI_API_KEY`
    - `OPENAI_MODEL`
-4. Export your Linkup API key so the doctor search can run:
+4. Export your Linkup API key so the doctor search and video gallery can run:
    ```bash
    export LINKUP_API_KEY="your-key"
    ```
@@ -29,4 +29,4 @@ Streamlit application that sends uploaded skin images to a local vision model (O
 streamlit run app.py
 ```
 
-Upload an image, click **Analyze**, and review the detected condition. The app displays an educational snippet (powered by Groq when configured) and, if the result is not **Normal Skin**, queries Linkup for dermatology specialists (optionally scoped to the location in the sidebar).
+Upload an image, click **Analyze**, and review the detected condition. The app displays an educational snippet (powered by Groq when configured), a gallery of dermatologist-created YouTube videos (via Linkup), and, if the result is not **Normal Skin**, queries Linkup for dermatology specialists (optionally scoped to the location in the sidebar).
