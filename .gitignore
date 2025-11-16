@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.pyc
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Streamlit/cache
+.streamlit/
+*/.streamlit/
+
+# Mac/Editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Local configs
+.env
