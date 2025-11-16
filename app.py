@@ -11,11 +11,18 @@ try:
 except ImportError:  # pragma: no cover - Linkup SDK might not be installed locally yet.
     LinkupClient = None  # type: ignore
 
+try:
+    from groq import Groq
+except ImportError:  # pragma: no cover - Groq SDK optional.
+    Groq = None  # type: ignore
+
 
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8080/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "not-needed")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "lfm2-vl")
 LINKUP_API_KEY = os.getenv("LINKUP_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
 
 DIAGNOSES = [
     "Acne",
@@ -24,6 +31,14 @@ DIAGNOSES = [
     "Rosacea",
     "Normal Skin",
 ]
+
+ACNE_EDUCATION_TEXT = (
+    "What is acne?\n"
+    "Our system sees a pattern that looks similar to acne: clogged pores, bumps, and redness.\n"
+    "Acne is a very common skin condition where pores get blocked by oil and dead skin cells, "
+    "sometimes with bacteria, leading to blackheads, whiteheads, and pimples.\n\n"
+    "General steps that may help (not medical advice):"
+)
 
 
 @st.cache_resource(show_spinner=False)
@@ -37,6 +52,12 @@ def get_linkup_client() -> Optional[LinkupClient]:
         return None
     return LinkupClient(api_key=LINKUP_API_KEY)
 
+
+@st.cache_resource(show_spinner=False)
+def get_groq_client() -> Optional[Groq]:
+    if not GROQ_API_KEY or Groq is None:
+        return None
+    return Groq(api_key=GROQ_API_KEY)
 
 def parse_model_payload(payload: str) -> Dict[str, Any]:
     """Extract JSON payload from the model and return a dictionary."""
@@ -105,6 +126,54 @@ def search_specialists(label: str, location: str) -> Tuple[Optional[Any], Option
         return None, str(exc)
 
 
+def fetch_condition_info(label: str) -> Tuple[Optional[str], Optional[str]]:
+    """Return an educational summary for the detected condition via Groq."""
+    label_clean = label.strip()
+    client = get_groq_client()
+    if client is None:
+        if label_clean.lower() == "acne":
+            return ACNE_EDUCATION_TEXT, None
+        return None, "Groq SDK not installed or GROQ_API_KEY missing."
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a dermatology educator creating succinct, friendly explanations. "
+                "Provide a heading in the form 'What is CONDITION?' followed by two sentences "
+                "describing what the system sees and what the condition is. "
+                "End with the line 'General steps that may help (not medical advice):' and "
+                "optionally add a short bulleted list beneath it. "
+                "When the condition is Acne, respond EXACTLY with the following text:\n"
+                f"{ACNE_EDUCATION_TEXT}\n"
+                "Do not add extra commentary."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Condition: {label_clean}. Describe it following the instructions. "
+                "If not acne, adapt the structure but keep it under 100 words."
+            ),
+        },
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            max_tokens=300,
+            temperature=0.3,
+        )
+    except Exception as exc:  # pragma: no cover - depends on Groq availability.
+        if label_clean.lower() == "acne":
+            return ACNE_EDUCATION_TEXT, None
+        return None, str(exc)
+
+    text = response.choices[0].message.content
+    return text, None
+
+
 def main() -> None:
     st.set_page_config(page_title="Skin Condition Triage", page_icon="🩺")
     st.title("Skin Condition Triage")
@@ -144,6 +213,13 @@ def main() -> None:
             st.write(f"**Confidence:** {confidence:.2f}")
         if explanation:
             st.write(f"**Explanation:** {explanation}")
+
+        st.subheader("Condition Overview")
+        info_text, info_error = fetch_condition_info(label)
+        if info_error:
+            st.info(f"Educational snippet unavailable: {info_error}")
+        elif info_text:
+            st.markdown(info_text)
 
         if label.lower() == "normal skin" or label.lower() == "normal":
             st.success("The model did not detect a skin disease. No specialist search triggered.")

@@ -17,6 +17,11 @@ Streamlit application that sends uploaded skin images to a local vision model (O
    ```bash
    export LINKUP_API_KEY="your-key"
    ```
+5. (Optional) Provide a Groq API key if you want dynamic educational summaries for each diagnosis:
+   ```bash
+   export GROQ_API_KEY="your-groq-key"
+   ```
+   - Override `GROQ_MODEL` to use another Groq-hosted LLM.
 
 ## Run the app
 
@@ -24,4 +29,4 @@ Streamlit application that sends uploaded skin images to a local vision model (O
 streamlit run app.py
 ```
 
-Upload an image, click **Analyze**, and review the detected condition. If the result is not **Normal Skin**, Linkup will be queried for dermatology specialists (optionally scoped to the location you enter in the sidebar).
+Upload an image, click **Analyze**, and review the detected condition. The app displays an educational snippet (powered by Groq when configured) and, if the result is not **Normal Skin**, queries Linkup for dermatology specialists (optionally scoped to the location in the sidebar).
