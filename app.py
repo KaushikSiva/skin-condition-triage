@@ -257,22 +257,32 @@ def build_carousel_items(videos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def render_video_details(videos: List[Dict[str, Any]]) -> None:
-    st.caption("Tap a slide to open YouTube. Details:")
-    for video in videos[:6]:
-        title = video.get("title") or "Dermatology video"
-        link = video.get("url") or video.get("link") or "#"
-        summary = video.get("summary")
-        doctor = video.get("doctor")
-        channel = video.get("channel")
-        published = video.get("published")
+    if not videos:
+        return
+    st.caption("Tap a slide to open YouTube, or inspect one video below.")
+    options = [
+        (video.get("title") or f"Video {idx + 1}", idx)
+        for idx, video in enumerate(videos[:6])
+    ]
+    labels = [label for label, _ in options]
+    default_index = 0
+    selected_label = st.selectbox("Video details", labels, index=default_index)
+    selected_idx = next(idx for label, idx in options if label == selected_label)
+    selected = videos[selected_idx]
 
-        st.markdown(f"**[{title}]({link})**")
-        meta_parts = list(filter(None, [doctor, channel, published]))
-        if meta_parts:
-            st.caption(" • ".join(meta_parts))
-        if summary:
-            st.write(summary)
-        st.divider()
+    title = selected.get("title") or "Dermatology video"
+    link = selected.get("url") or selected.get("link") or "#"
+    summary = selected.get("summary")
+    doctor = selected.get("doctor")
+    channel = selected.get("channel")
+    published = selected.get("published")
+
+    st.markdown(f"**[{title}]({link})**")
+    meta_parts = list(filter(None, [doctor, channel, published]))
+    if meta_parts:
+        st.caption(" • ".join(meta_parts))
+    if summary:
+        st.write(summary)
 
 
 def fetch_condition_info(label: str) -> Tuple[Optional[str], Optional[str]]:
