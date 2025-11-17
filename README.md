@@ -2,6 +2,8 @@
 
 Streamlit application that sends uploaded skin images to a local vision model (OpenAI-compatible endpoint on `http://localhost:8080/v1`) and, when a disease is detected, uses Linkup to find dermatologists and curated doctor-made YouTube videos for that condition. The videos are displayed using the `streamlit-carousel` component for an interactive viewing experience.
 
+LOOM: https://www.loom.com/share/c1ad083f6ca04983a3c23b905507b523
+
 ## Setup
 
 1. (Optional) Create/activate a virtual environment.
